@@ -1,51 +1,73 @@
 name: Vydat podepsanou aktualizaci
+
 on:
   push:
-    tags: ["v*"]
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       tag:
-        description: Existující tag verze (napr. v1.1.0)
+        description: Existující tag verze (např. v1.1.0)
         required: true
         type: string
+
 permissions:
   contents: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
-      - name: Android SDK
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+
+      - name: Připravit Android SDK 35
+        shell: bash
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" 'platforms;android-35' 'build-tools;35.0.0'
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
-      - name: Připrav podpisový klíč
+
+      - name: Připravit podpisový klíč
         env:
           SIGNING_KEY_B64: ${{ secrets.APK_KEYSTORE_BASE64 }}
         run: |
           if [ -z "$SIGNING_KEY_B64" ]; then
-            echo 'Není nastaven APK_KEYSTORE_BASE64 – bez trvalého podpisu nelze vydávat aktualizace.' >&2
+            echo 'Chybí APK_KEYSTORE_BASE64. Nastavte podpisové secrets.' >&2
             exit 1
           fi
           printf '%s' "$SIGNING_KEY_B64" | base64 --decode > "$RUNNER_TEMP/firealert-release.jks"
-      - name: Sestav release APK
+          chmod 600 "$RUNNER_TEMP/firealert-release.jks"
+
+      - name: Sestavit release APK
         env:
           FIREALERT_KEYSTORE_FILE: ${{ runner.temp }}/firealert-release.jks
           FIREALERT_KEYSTORE_PASSWORD: ${{ secrets.APK_KEYSTORE_PASSWORD }}
           FIREALERT_KEY_ALIAS: ${{ secrets.APK_KEY_ALIAS }}
           FIREALERT_KEY_PASSWORD: ${{ secrets.APK_KEY_PASSWORD }}
         run: gradle --no-daemon :app:assembleRelease
-      - name: Ověř podpis APK
+
+      - name: Ověřit podpis APK
         run: |
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk
-      - name: Přejmenuj APK
+          APK=app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+
+      - name: Přejmenovat APK
         run: cp app/build/outputs/apk/release/app-release.apk "Kvaltik-FIRE-ALERT-${{ github.event.inputs.tag || github.ref_name }}.apk"
+
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
