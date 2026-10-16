@@ -8,3 +8,6 @@ Přehled veřejně publikovaných zpráv o hasičských zásazích v Česku. Umo
 Otevři kartu **Actions → Sestavit APK → Run workflow**, potom stáhni artefakt `Kvaltik-FIRE-ALERT-Android-APK`. Obsahuje testovací `app-debug.apk`.
 
 Build: JDK 17, Gradle 8.11.1, Android SDK 35, Android Gradle Plugin 8.9.2. Projekt lze otevřít v Android Studiu.
+
+
+APK compilation check: Android CI verification branch.
